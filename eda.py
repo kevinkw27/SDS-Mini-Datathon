@@ -83,7 +83,7 @@ df_clean.describe()
 """
 #Boxplot for charges
 import scipy
-df_clean['log_charges'] = np.log(df['charges'])
+df_clean['log_charges'] = np.log(df_clean['charges'])
 sns.boxplot(x='log_charges', data=df_clean)
 plt.title(f'Distribution of charges')
 plt.xlabel('charges')
@@ -151,4 +151,5 @@ plt.show()
 sns.countplot(x="smoker",hue="region",data=df_clean,palette="colorblind")
 plt.title("Smokers by region")
 plt.show()
+
 """
