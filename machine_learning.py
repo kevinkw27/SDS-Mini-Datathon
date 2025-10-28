@@ -53,8 +53,8 @@ print("\nVariance Inflation Factor (VIF) for each feature:\n", vif_data)
 ##########################################################
 #################LINEAR REGRESSION########################
 ##########################################################
-"""
 
+"""
 # Load the library for linear regression
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
@@ -62,23 +62,32 @@ from sklearn.preprocessing import LabelEncoder, PolynomialFeatures
 from sklearn.metrics import mean_squared_error, r2_score
 import statsmodels.api as sm
 
-#Label encoding for categorical predictors
-label_encoder = LabelEncoder()
-df['sex_encoded'] = label_encoder.fit_transform(df['sex'])
-df['smoker_encoded'] = label_encoder.fit_transform(df['smoker'])
-df['region_encoded'] = label_encoder.fit_transform(df['region'])
+#Binary encode sex and smoker
+df['sex_binary'] = df['sex'].map({'male': 1, 'female': 0})
+df['smoker_binary'] = df['smoker'].map({'yes': 1, 'no': 0})
 
+#One-hot encode region 
+region_dummies = pd.get_dummies(df['region'], prefix='region', drop_first=True)
 
-X = df[['age', 'sex_encoded', 'bmi', 'children', 'smoker_encoded', 'region_encoded']]
+# Concatenate all features 
+X = pd.concat([
+df[['age', 'bmi', 'children', 'sex_binary', 'smoker_binary']],
+region_dummies
+], axis=1)
+
+# Take log of target variable
 y = np.log(df['charges'])
 
 
-# Add constant for intercept
+# Add constant for intercept - OLS does not add an intercept automatically
 X = sm.add_constant(X)
+
+# Ensure all predictors are numeric
+X = X.astype(float)
 
 def backward_elimination(X, y):
     features = list(X.columns)
-
+    
     full_model = sm.OLS(y, X).fit()
     best_adj_r2 = full_model.rsquared_adj
     best_model = full_model  
@@ -99,6 +108,7 @@ def backward_elimination(X, y):
         # Find the best adjusted R² after removing one feature
         if not models:
             break
+
         best_trial_adj_r2, feature_removed, best_trial_model = max(models, key=lambda x: x[0])
         
         if best_trial_adj_r2 > best_adj_r2:
@@ -131,11 +141,8 @@ y_pred = model.predict(X_test)
 #Visualising coefficients
 print("Intercept:", model.intercept_)
 
-# Get actual feature names after preprocessing
-X_raw = df[['age', 'sex', 'bmi', 'children', 'smoker', 'region']]
-feature_names = X_raw.columns
 
-coeff_df = pd.DataFrame({"Feature": feature_names, "Coefficient": model.coef_})
+coeff_df = pd.DataFrame({"Feature": X.columns, "Coefficient": model.coef_})
 print("\nFeature Coefficients:\n", coeff_df)
 
 coef_df_sorted = coeff_df.sort_values(by="Coefficient", ascending=False)
@@ -182,7 +189,7 @@ plt.show()
 # variance score: Model explains 76% of variance
 print('Variance score: {}'.format(model.score(X_test, y_test)))
 
-# RMSE: 8582.54
+# RMSE: 8562.02
 rmse_test_orig = np.sqrt(mean_squared_error(np.exp(y_test), np.exp(y_pred)))
 print("Test RMSE (original scale):", rmse_test_orig)
 """
@@ -190,25 +197,31 @@ print("Test RMSE (original scale):", rmse_test_orig)
 ##########################################################
 #################POLYNOMIAL REGRESSION####################
 ##########################################################
+
 """
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, PolynomialFeatures
 from sklearn.metrics import mean_squared_error, r2_score
 
-#Label encoding for categorical predictors
-label_encoder = LabelEncoder()
-df['sex_encoded'] = label_encoder.fit_transform(df['sex'])
-df['smoker_encoded'] = label_encoder.fit_transform(df['smoker'])
-df['region_encoded'] = label_encoder.fit_transform(df['region'])
+#Binary encode sex and smoker
+df['sex_binary'] = df['sex'].map({'male': 1, 'female': 0})
+df['smoker_binary'] = df['smoker'].map({'yes': 1, 'no': 0})
 
+#One-hot encode region 
+region_dummies = pd.get_dummies(df['region'], prefix='region', drop_first=True)
 
-X = df[['age', 'sex_encoded', 'bmi', 'children', 'smoker_encoded', 'region_encoded']]
+# Concatenate all features 
+X = pd.concat([
+df[['age', 'bmi', 'children', 'sex_binary', 'smoker_binary']],
+region_dummies
+], axis=1)
+
 y = np.log(df['charges'])
 
 # --- Polynomial Feature Transformation ---
 # Choose polynomial degree (try degree= 2 or 3)
-poly = PolynomialFeatures(degree=4, include_bias=False)
+poly = PolynomialFeatures(degree=2, include_bias=False)
 X_poly = poly.fit_transform(X)
 
 # Get feature names for later interpretation
@@ -230,7 +243,7 @@ n, p = X_test.shape
 adj_r2 = 1 - (1 - r2) * (n - 1) / (n - p - 1)
 rmse_test_orig = np.sqrt(mean_squared_error(np.exp(y_test), np.exp(y_pred)))
 
-# RMSE degree 2 - 5317, degree 3 - 5094, degree 4 - 7169
+# RMSE degree 2 - 5395, degree 3 - 5281, degree 4 - 34852
 print("Test RMSE (original scale):", rmse_test_orig)
 
 # --- Residual Error Plot ---
@@ -254,22 +267,26 @@ plt.show()
 #################K NEAREST NEIGHBOURS#####################
 ##########################################################
 
-
-""""
+"""
 #Import libraries for KNN
 from sklearn.preprocessing import StandardScaler
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import mean_squared_error, r2_score
-#Label encoding for categorical predictors
-label_encoder = LabelEncoder()
-df['sex_encoded'] = label_encoder.fit_transform(df['sex'])
-df['smoker_encoded'] = label_encoder.fit_transform(df['smoker'])
-df['region_encoded'] = label_encoder.fit_transform(df['region'])
 
-#Define features and target
-X = df[['age', 'sex_encoded', 'bmi', 'children', 'smoker_encoded', 'region_encoded']]
+#Binary encode sex and smoker
+df['sex_binary'] = df['sex'].map({'male': 1, 'female': 0})
+df['smoker_binary'] = df['smoker'].map({'yes': 1, 'no': 0})
+
+#One-hot encode region 
+region_dummies = pd.get_dummies(df['region'], prefix='region', drop_first=True)
+
+# Concatenate all features 
+X = pd.concat([
+df[['age', 'bmi', 'children', 'sex_binary', 'smoker_binary']],
+region_dummies
+], axis=1)
 y = df['charges']
 
 #Split dataset for train and test set
@@ -279,7 +296,6 @@ X_train, X_test,y_train, y_test = train_test_split(X, y, test_size=0.4, random_s
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train)
 X_test_scaled = scaler.transform(X_test)
-
 
 # Define odd k values from 1 to 79
 k_values = list(range(1, 79, 2))
@@ -320,9 +336,8 @@ plt.show()
 
 print(f"Best k (based on RMSE): {best_k}")
 
-
 # Create KNN classifier using best k
-knn_model = KNeighborsRegressor(n_neighbors=15)
+knn_model = KNeighborsRegressor(n_neighbors=3)
 
 # Train the model
 knn_model.fit(X_train_scaled, y_train)
@@ -333,7 +348,7 @@ y_pred = knn_model.predict(X_test_scaled)
 # Evaluate the model
 rmse = (mean_squared_error(y_test, y_pred)) ** 0.5
 
-#RMSE 5172
+#RMSE 5544
 print(f'Mean Squared Error: {rmse}')
 """
 
@@ -348,19 +363,22 @@ from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 
-#Label encoding for categorical predictors
-label_encoder = LabelEncoder()
-df['sex_encoded'] = label_encoder.fit_transform(df['sex'])
-df['smoker_encoded'] = label_encoder.fit_transform(df['smoker'])
-df['region_encoded'] = label_encoder.fit_transform(df['region'])
+#Binary encode sex and smoker
+df['sex_binary'] = df['sex'].map({'male': 1, 'female': 0})
+df['smoker_binary'] = df['smoker'].map({'yes': 1, 'no': 0})
 
-#Define features and target
-X = df[['age', 'sex_encoded', 'bmi', 'children', 'smoker_encoded', 'region_encoded']]
+#One-hot encode region 
+region_dummies = pd.get_dummies(df['region'], prefix='region', drop_first=True)
+
+# Concatenate all features 
+X = pd.concat([
+df[['age', 'bmi', 'children', 'sex_binary', 'smoker_binary']],
+region_dummies
+], axis=1)
 y = df['charges']
 
 #Split dataset for train and test set
 X_train, X_test,y_train, y_test = train_test_split(X, y, test_size=0.4, random_state=1)
-
 
 # Log-transform target to reduce skew ---
 y_train_log = np.log(y_train)
@@ -393,7 +411,7 @@ y_pred_log = best_svr.predict(X_test_scaled)
 y_pred_orig = np.exp(y_pred_log)
 
 # --- Evaluation ---
-# RMSE - 4951
+# RMSE - 4927
 rmse_test_orig = np.sqrt(mean_squared_error(y_test, y_pred_orig))
 print("Test RMSE (original scale):", rmse_test_orig)
 
