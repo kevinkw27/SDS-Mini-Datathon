@@ -2,7 +2,11 @@
 #### DATA CLEANING############################
 ##############################################
 
-import pandas as pd #used for data manipulation and analysis
+import pandas as pd
+import numpy as np 
+import seaborn as sns
+import matplotlib.pyplot as plt
+
 
 df = pd.read_csv(r"C:\Users\kevin\Documents\NUS\Y2S1\SDS Datathon\insurance.csv")
 
@@ -40,7 +44,7 @@ df_clean.info()
 ##############################################
 #### EXPLORATORY DATA ANALYSIS PART 2 ########
 ##############################################
-
+"""
 import numpy as np #super fast calculator
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -59,7 +63,7 @@ smoker_percentage = df_clean['smoker'].value_counts(normalize=True) * 100
 
 
 # reporting the imbalance for 'EverBenched'
-"""
+
 ax = sns.countplot(x='smoker', data=df_clean)
 plt.title("Class Distribution for 'Smoker'")
 
@@ -70,7 +74,7 @@ for p in ax.patches:
                 (p.get_x() + p.get_width() / 2., count),  # position
                 ha='center', va='bottom', fontsize=10, color='black')
 plt.show()
-"""
+
 
 # Checking if "region" is imbalanced
 region_percentage = df_clean['region'].value_counts(normalize=True) * 100
@@ -80,10 +84,9 @@ region_percentage = df_clean['region'].value_counts(normalize=True) * 100
 df_clean.describe()
 # Charges: Mean - $13,279 Min - $1121 25% - $4746 Median - $9386 75% - $16,657 Max - $63,770
 
-"""
 #Boxplot for charges
 import scipy
-df_clean['log_charges'] = np.log(df_clean['charges'])
+df_clean['log_charges'] = np.log(df['charges'])
 sns.boxplot(x='log_charges', data=df_clean)
 plt.title(f'Distribution of charges')
 plt.xlabel('charges')
@@ -91,15 +94,37 @@ plt.ylabel('Count')
 plt.show()
 """
 
-"""
-# Linear Correlation for Numerical Variables
-# Age - 0.29, BMI - 0.19, # Children 0.067
-numerical_cols = df_clean.select_dtypes(include=np.number).columns
-correlation_matrix = df_clean[numerical_cols].corr()
-print("Linear Correlation Matrix:")
-print(correlation_matrix)
-"""
+#############################
+####CORRELATION MATRIX#######
+#############################
 
+"""
+# Encode binary variables first
+df_clean['smoker_binary'] = df_clean['smoker'].map({'no': 0, 'yes': 1})
+df_clean['sex_binary'] = df_clean['sex'].map({'female': 0, 'male': 1})
+
+# One-hot encode region
+region_dummies = pd.get_dummies(df_clean['region'], prefix='region', dtype=int)
+
+# Combine everything
+df_combined = pd.concat([df_clean, region_dummies], axis=1)
+
+# Select numeric columns
+numeric_cols = df_combined.select_dtypes(include=np.number).columns
+
+# Correlation
+correlation_matrix = df_combined[numeric_cols].corr()
+
+# Display
+print("Combined Correlation Matrix:")
+print(correlation_matrix)
+
+plt.figure(figsize=(12,8))
+sns.heatmap(correlation_matrix, annot=True, fmt=".2f", cmap="coolwarm")
+plt.title("Correlation Matrix Including Encoded Categorical Variables (Smoker, Sex, Region)")
+plt.show()
+
+"""
 
 ## CATEGORICAL FEATURES VS CHARGES #######
 """
@@ -125,8 +150,7 @@ plt.ylabel("Charges")
 plt.show()
 """
 
-"""
-# Boxplot showing region vs charges -- While it's quite even throughout, may be unrepresented because
+# Boxplot showing children vs charges -- While it's quite even throughout, may be unrepresented because
 # limited data for 4 and 5 children
 sns.boxplot(x="children", y="charges", data=df_clean, palette="Set2", hue="children", legend=False)
 plt.title("Charges by children")
@@ -151,5 +175,6 @@ plt.show()
 sns.countplot(x="smoker",hue="region",data=df_clean,palette="colorblind")
 plt.title("Smokers by region")
 plt.show()
+"""
 
 """
