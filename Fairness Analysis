@@ -1,0 +1,126 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.metrics import mean_absolute_error
+
+sns.set_theme(style="whitegrid")
+
+def _ensure_groups_frame(X_like, groups_df, needed_cols):
+    Return a DataFrame with the needed group columns aligned to X_like's rows.
+    Use groups_df if provided (must match length/order); otherwise try to pull
+    the columns directly from X_like (if it's a DataFrame).
+    
+    if groups_df is not None:
+        assert len(groups_df) == len(X_like), "groups_df must align with X_test rows."
+        missing = [c for c in needed_cols if c not in groups_df.columns]
+        if missing:
+            raise ValueError(f"groups_df missing columns: {missing}")
+        return groups_df[needed_cols].reset_index(drop=True)
+
+    # else infer from X_like if possible
+    if isinstance(X_like, pd.DataFrame):
+        missing = [c for c in needed_cols if c not in X_like.columns]
+        if missing:
+            raise ValueError(
+                f"Group columns {missing} not found in X_test. "
+                "Pass them via groups_df parameter."
+            )
+        return X_like[needed_cols].reset_index(drop=True)
+
+    raise ValueError("Provide groups_df with ['sex','region'] columns or keep them in X_test.")
+
+def _fairness_table_core(y_true, y_pred, group_labels):
+    df = pd.DataFrame({
+        "charges": y_true,
+        "predicted": y_pred,
+        "group": group_labels
+    })
+    df["residual"]  = df["predicted"] - df["charges"]        # +ve = overprediction
+    df["abs_error"] = (df["predicted"] - df["charges"]).abs()
+
+    tbl = (df.groupby("group")
+             .agg(n=("charges","size"),
+                  actual_mean=("charges","mean"),
+                  pred_mean=("predicted","mean"),
+                  residual_gap=("residual","mean"),
+                  mae=("abs_error","mean"))
+             .round(2)
+             .sort_values("actual_mean"))
+    return df, tbl
+
+def fairness_report_groups(model, X_test, y_test,
+                           groups_df=None,
+                           group_cols=("sex", "region"),
+                           make_plots=True,
+                           save_dir=None,
+                           title_prefix="Fairness"):
+    
+    Compute fairness tables by 'sex' and 'region' for a fitted model.
+    - model: fitted sklearn estimator or Pipeline
+    - X_test: features for test set (same rows/order as y_test)
+    - y_test: true target (1D array-like)
+    - groups_df: DataFrame with columns ['sex','region'] aligned to X_test rows,
+                 or None to try to read from X_test if it's a DataFrame
+    - make_plots: whether to draw bar charts
+    - save_dir: if provided, saves PNGs there
+    
+    # 1) Predict
+    y_pred = model.predict(X_test)
+    # safety: coerce to 1D numpy
+    y_true = np.asarray(y_test).ravel()
+    y_pred = np.asarray(y_pred).ravel()
+
+    # 2) Pull group labels (sex, region) aligned to X_test rows
+    groups = _ensure_groups_frame(X_test, groups_df, list(group_cols))
+
+    results = {}
+    for g in group_cols:
+        df_g, tbl_g = _fairness_table_core(y_true, y_pred, groups[g].values)
+        results[g] = {"table": tbl_g, "df": df_g}
+
+        print(f"\n=== Fairness by {g} ===")
+        print(tbl_g)
+
+        if make_plots:
+            # Actual vs Predicted means
+            grp_means = (df_g.groupby("group")[["charges","predicted"]]
+                           .mean()
+                           .rename(columns={"charges":"Actual","predicted":"Predicted"})
+                           .round(0))
+            ax = grp_means.plot(kind="bar", figsize=(6.5,4))
+            ax.set_title(f"{title_prefix}: Actual vs Predicted by {g}")
+            ax.set_ylabel("Average Charges ($)")
+            ax.tick_params(axis="x", rotation=0)
+            for c in ax.containers:
+                ax.bar_label(c, fmt="%.0f", padding=2, fontsize=9)
+            plt.tight_layout()
+            if save_dir:
+                import os
+                os.makedirs(save_dir, exist_ok=True)
+                plt.savefig(f"{save_dir}/fair_{g}_means.png", bbox_inches="tight", dpi=300)
+                plt.close()
+            else:
+                plt.show()
+
+            # Residual gap (Predicted - Actual) per group
+            gap = df_g.groupby("group")["residual"].mean().sort_values()
+            fig, ax2 = plt.subplots(figsize=(6.5,4))
+            ax2.barh(gap.index.astype(str), gap.values)
+            ax2.set_title(f"{title_prefix}: Residual Gap by {g} (ideal ≈ 0)")
+            ax2.set_xlabel("Mean Residual ($)")
+            for i, v in enumerate(gap.values):
+                ax2.text(v, i, f" {v:,.0f}", va="center", fontsize=9)
+            plt.tight_layout()
+            if save_dir:
+                plt.savefig(f"{save_dir}/gap_{g}.png", bbox_inches="tight", dpi=300)
+                plt.close()
+            else:
+                plt.show()
+
+        # quick headline for slide notes
+        worst_group = tbl_g["residual_gap"].abs().idxmax()
+        worst_val   = tbl_g.loc[worst_group, "residual_gap"]
+        print(f"Max |residual_gap| for {g}: {worst_val:,.0f} in '{worst_group}'")
+
+    return results
