@@ -175,6 +175,24 @@ plt.show()
 sns.countplot(x="smoker",hue="region",data=df_clean,palette="colorblind")
 plt.title("Smokers by region")
 plt.show()
-"""
+
+# trying out pairwise relationships (to test out significance of other variables given that smoking status is still the most significant predictor)
+sns.pairplot(
+    df_clean,
+    vars=["age","bmi","children","charges"],
+    hue="smoker",
+    corner=True,              # show lower triangle only
+    diag_kind="kde",          # smooth diag
+    plot_kws={"s":18, "alpha":0.45, "edgecolor":"none"},  # smaller, translucent points
+    height=2.2, aspect=1.0    # tighter grid
+)
+plt.suptitle("Pairwise relationships (colored by smoker)", y=1.02)
+
+### Some things i discover:
+### 1) Smoking is the most important determining factor for insurance charges
+### 2) BMI and age can raise insurance prices. (This is especially true for smokers)
+### 3) Number of children, region of residence, gender are minor determining factors
+### 4) The combined effect of smoker + high BMI can raise insurance prices much higher together. MUST WATCH OUT FOR THIS COMBO
 
 """
+
