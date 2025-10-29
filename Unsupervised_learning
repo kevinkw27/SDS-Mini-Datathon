@@ -79,3 +79,50 @@ print(cluster_summary)
 # Cluster 1 (middle-aged, many children) may be moderate.
 # Cluster 0 (older, few children, moderate BMI) may also be moderate.
 
+
+"""
+# 1) Load dataset
+df = pd.read_csv(r"C:\Users\kevin\Documents\NUS\Y2S1\SDS Datathon\insurance.csv")
+
+# 2) Features (exclude charges for unsupervised learning)
+X = df[["age", "bmi", "children", "sex", "smoker", "region"]]
+
+# Preprocess
+num_cols = ["age", "bmi"]
+cat_cols = ["smoker"]
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        ("num", StandardScaler(), num_cols),
+        ("cat", OneHotEncoder(drop="first"), cat_cols)
+    ]
+)
+
+X_processed = preprocessor.fit_transform(X)
+
+# K-Means clustering
+k = 3
+kmeans = KMeans(n_clusters=k, random_state=42)
+labels = kmeans.fit_predict(X_processed)
+df["cluster"] = labels
+
+# Summary
+cluster_summary = df.groupby("cluster")[["age","bmi","charges"]].mean().round(2)
+cluster_summary["pct_smokers"] = df.groupby("cluster")["smoker"].apply(lambda x: (x=="yes").mean()*100)
+print(cluster_summary)
+
+# Compare average charges visually
+sns.barplot(data=df.groupby("cluster", as_index=False)["charges"].mean(),
+            x="cluster", y="charges", palette="Set2")
+plt.title("Average Charges by Cluster")
+plt.show()
+"""
+
+"""
+Cluster 0 (Healthy Young Adults):
+This group represents younger, healthier individuals with normal BMI. Their average insurance charges are the lowest, reflecting lower health risk.
+Cluster 1 (Young Obese Adults):
+Although relatively young, their higher BMI contributes to moderately elevated insurance charges. This suggests that obesity increases medical costs even among younger individuals.
+Cluster 2 (Older Overweight Adults):
+This segment consists of older individuals with above-average BMI. Despite having a smaller proportion of smokers, they exhibit the highest average charges—indicating that age and BMI jointly drive higher medical costs.
+"""
