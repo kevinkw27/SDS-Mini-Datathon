@@ -352,4 +352,117 @@ for i, (group, vals) in enumerate(bmi_pivot_means.iterrows()):
 plt.legend(title='Smoker')
 plt.tight_layout()
 plt.show()
-"""
+
+
+""" Ernest's input """
+#### Ernest's input
+
+sns.lmplot(data=df_clean, x="bmi", y="charges", hue="smoker", lowess=True)
+sns.lmplot(data=df_clean, x="age", y="charges", hue="smoker", lowess=True)
+
+
+# Heatmap of average charges by Age and BMI bins
+age_bins = pd.cut(df_clean["age"], bins=[18,30,40,50,60,70])
+bmi_bins = pd.cut(df_clean["bmi"], bins=[15,25,30,35,40,55])
+
+pivot = df_clean.pivot_table(values="charges", index=age_bins, columns=bmi_bins, aggfunc="mean")
+
+plt.figure(figsize=(8,5))
+sns.heatmap(pivot, cmap="YlOrRd", annot=True, fmt=".0f")
+plt.title("Average Insurance Charges by Age and BMI")
+plt.xlabel("BMI Range")
+plt.ylabel("Age Range")
+plt.tight_layout()
+plt.show()
+
+
+# Sort individuals by charges
+df_sorted = df_clean.sort_values("charges").reset_index(drop=True)
+df_sorted["cum_pct_population"] = np.linspace(0, 100, len(df_sorted))
+df_sorted["cum_pct_charges"] = 100 * df_sorted["charges"].cumsum() / df_sorted["charges"].sum()
+
+plt.figure(figsize=(6,5))
+plt.plot(df_sorted["cum_pct_population"], df_sorted["cum_pct_charges"], color="darkblue")
+plt.plot([0,100],[0,100],"--",color="grey")  # line of equality
+plt.title("Cumulative Distribution of Charges")
+plt.xlabel("Cumulative % of Population")
+plt.ylabel("Cumulative % of Total Charges")
+plt.tight_layout()
+plt.show()
+
+
+### Some things i discover:
+### 1) Smoking is the most important determining factor for insurance charges
+### 2) BMI and age can raise insurance prices. (This is especially true for smokers)
+### 3) Number of children, region of residence, gender are minor determining factors
+### 4) The combined effect of smoker + high BMI can raise insurance prices much higher together. MUST WATCH OUT FOR THIS COMBO
+
+df_sorted = df_clean.sort_values("charges").reset_index(drop=True)
+df_sorted["cum_pop_%"] = 100 * (np.arange(len(df_sorted))+1) / len(df_sorted)
+df_sorted["cum_chg_%"] = 100 * df_sorted["charges"].cumsum() / df_sorted["charges"].sum()
+
+''' Ernest's input '''
+
+sns.lmplot(data=df_clean, x="bmi", y="charges", hue="smoker", lowess=True)
+sns.lmplot(data=df_clean, x="age", y="charges", hue="smoker", lowess=True)
+
+# Heatmap of average charges by Age and BMI bins
+age_bins = pd.cut(df_clean["age"], bins=[18,30,40,50,60,70])
+bmi_bins = pd.cut(df_clean["bmi"], bins=[15,25,30,35,40,55])
+
+pivot = df_clean.pivot_table(values="charges", index=age_bins, columns=bmi_bins, aggfunc="mean")
+
+plt.figure(figsize=(8,5))
+sns.heatmap(pivot, cmap="YlOrRd", annot=True, fmt=".0f")
+plt.title("Average Insurance Charges by Age and BMI")
+plt.xlabel("BMI Range")
+plt.ylabel("Age Range")
+plt.tight_layout()
+plt.show()
+
+# Sort individuals by charges
+df_sorted = df_clean.sort_values("charges").reset_index(drop=True)
+df_sorted["cum_pct_population"] = np.linspace(0, 100, len(df_sorted))
+df_sorted["cum_pct_charges"] = 100 * df_sorted["charges"].cumsum() / df_sorted["charges"].sum()
+
+plt.figure(figsize=(6,5))
+plt.plot(df_sorted["cum_pct_population"], df_sorted["cum_pct_charges"], color="darkblue")
+plt.plot([0,100],[0,100],"--",color="grey")  # line of equality
+plt.title("Cumulative Distribution of Charges")
+plt.xlabel("Cumulative % of Population")
+plt.ylabel("Cumulative % of Total Charges")
+plt.tight_layout()
+plt.show()
+
+df_sorted = df_clean.sort_values("charges").reset_index(drop=True)
+df_sorted["cum_pop_%"] = 100 * (np.arange(len(df_sorted))+1) / len(df_sorted)
+df_sorted["cum_chg_%"] = 100 * df_sorted["charges"].cumsum() / df_sorted["charges"].sum()
+
+df_sorted = df_clean.sort_values("charges").reset_index(drop=True)
+df_sorted["cum_pop_%"] = 100 * (np.arange(len(df_sorted))+1) / len(df_sorted)
+df_sorted["cum_chg_%"] = 100 * df_sorted["charges"].cumsum() / df_sorted["charges"].sum()
+
+plt.figure(figsize=(6,4))
+plt.plot(df_sorted["cum_pop_%"], df_sorted["cum_chg_%"], lw=2)
+plt.plot([0,100],[0,100],"--",color="gray")
+plt.title("Cumulative Distribution of Charges")
+plt.xlabel("Cumulative % of Population"); plt.ylabel("Cumulative % of Total Charges")
+plt.tight_layout(); plt.show()
+
+plt.figure(figsize=(5,5))
+df_clean.groupby("smoker")["charges"].sum().plot(kind="pie", autopct="%.1f%%", startangle=90)
+plt.title("Share of Total Charges by Smoking Status"); plt.ylabel("")
+plt.tight_layout(); plt.show()
+
+df_clean["age_group"] = pd.cut(df_clean["age"], bins=[18,30,40,50,60,70,80],
+                               labels=["18–29","30–39","40–49","50–59","60–69","70–79"])
+sns.catplot(data=df_clean, x="age_group", y="charges", hue="smoker",
+            kind="bar", ci=None, height=4, aspect=1.6)
+plt.title("Average Charges by Age Group and Smoking"); plt.xlabel("Age Group"); plt.ylabel("Avg Charges ($)")
+plt.tight_layout(); plt.show()
+
+fig, ax = plt.subplots(1,2, figsize=(10,4))
+sns.histplot(df_clean["charges"], bins=40, kde=True, ax=ax[0]); ax[0].set_title("Raw Charges (Skewed)")
+sns.histplot(np.log(df_clean["charges"]), bins=40, kde=True, ax=ax[1]); ax[1].set_title("Log Charges (Stabilized)")
+for a in ax: a.set_xlabel(""); a.set_ylabel("Count")
+plt.tight_layout(); plt.show()
