@@ -196,3 +196,160 @@ plt.suptitle("Pairwise relationships (colored by smoker)", y=1.02)
 
 """
 
+###############################
+######AGE VS SMOKER############
+###############################
+"""
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import statsmodels.formula.api as smf
+import numpy as np
+
+# Scatterplot: Age vs Charges by Smoker Status
+sns.scatterplot(data=df, x='age', y='charges', hue='smoker')
+plt.title('Charges vs Age by Smoker Status')
+plt.xlabel('Age')
+plt.ylabel('Charges')
+plt.show()
+
+# Interaction regression model: Charges ~ Age * Smoker
+model_age = smf.ols('charges ~ age * smoker', data=df).fit()
+print(model_age.summary())
+
+# Define custom age bins
+age_bins = [17, 25, 35, 45, 55, 65]  # meaningful ranges
+age_labels = ['18-25', '26-35', '36-45', '46-55', '56-65']
+
+# Assign age groups
+df['age_group'] = pd.cut(df['age'], bins=age_bins, labels=age_labels, include_lowest=True, right=True)
+
+# Compute group means
+age_group_means = df.groupby(['age_group', 'smoker'])['charges'].mean().reset_index()
+
+# Pivot to calculate smoker vs non-smoker percentage difference
+age_pivot_means = age_group_means.pivot(index='age_group', columns='smoker', values='charges')
+age_pivot_means['pct_diff'] = ((age_pivot_means['yes'] - age_pivot_means['no']) / age_pivot_means['no']) * 100
+
+# Boxplot
+plt.figure(figsize=(10,6))
+ax = sns.boxplot(data=df, x='age_group', y='charges', hue='smoker', showfliers=False)
+plt.title('Charges by Age Group (Custom Bins) and Smoker Status')
+plt.xlabel('Age Group')
+plt.ylabel('Charges')
+
+# Overlay group means as diamond markers
+sns.pointplot(
+    data=age_group_means,
+    x='age_group',
+    y='charges',
+    hue='smoker',
+    markers='D',
+    dodge=0.4,
+    join=False,
+    palette='dark:black',
+    ax=ax,
+    errorbar=None
+)
+
+# Add numeric labels for group means
+for i, row in age_group_means.iterrows():
+    x = list(df['age_group'].cat.categories).index(row['age_group'])
+    offset = -0.2 if row['smoker'] == 'no' else 0.2
+    ax.text(x + offset, row['charges'] + 500, f'{row["charges"]:.0f}',
+            ha='center', color='black', fontsize=9, fontweight='bold')
+
+# Add percentage difference labels above each age group (for smokers)
+for i, (group, vals) in enumerate(age_pivot_means.iterrows()):
+    pct = vals['pct_diff']
+    ax.text(i, vals['yes'] + 2500, f'+{pct:.0f}%', ha='center',
+            color='red', fontsize=10, fontweight='bold')
+
+plt.legend(title='Smoker')
+plt.tight_layout()
+plt.show()
+"""
+
+###############################
+######BMI VS SMOKER############
+###############################
+"""
+import seaborn as sns
+import matplotlib.pyplot as plt
+import statsmodels.formula.api as smf
+
+# Scatterplot: BMI vs Charges by Smoker Status
+sns.scatterplot(data=df, x='bmi', y='charges', hue='smoker')
+plt.title('Charges vs BMI by Smoker Status')
+plt.xlabel('BMI')
+plt.ylabel('Charges')
+plt.show()
+
+# Interaction regression model: Charges ~ BMI * Smoker
+# BMI has a far stronger effect on charges for smokers
+model_bmi = smf.ols('charges ~ bmi * smoker', data=df).fit()
+print(model_bmi.summary())
+
+# Compute BMI quartiles
+bmi_quartiles = np.quantile(df['bmi'], [0, 0.25, 0.5, 0.75, 1.0])
+# Round to 1 decimal for readability
+bmi_quartiles_rounded = [round(q, 1) for q in bmi_quartiles]
+
+# Create non-overlapping BMI group labels
+bmi_labels = [f'{bmi_quartiles_rounded[i]}-{round(bmi_quartiles_rounded[i+1]-0.1, 1)}' 
+              for i in range(len(bmi_quartiles_rounded)-1)]
+
+# Assign BMI groups with non-overlapping bins
+df['bmi_group'] = pd.cut(
+    df['bmi'], 
+    bins=bmi_quartiles, 
+    labels=bmi_labels, 
+    include_lowest=True, 
+    right=False  # left-inclusive, right-exclusive
+)
+
+# Compute group means
+bmi_group_means = df.groupby(['bmi_group', 'smoker'])['charges'].mean().reset_index()
+
+# Pivot to calculate smoker vs non-smoker percentage difference
+bmi_pivot_means = bmi_group_means.pivot(index='bmi_group', columns='smoker', values='charges')
+bmi_pivot_means['pct_diff'] = ((bmi_pivot_means['yes'] - bmi_pivot_means['no']) / bmi_pivot_means['no']) * 100
+
+# Boxplot
+plt.figure(figsize=(10,6))
+ax = sns.boxplot(data=df, x='bmi_group', y='charges', hue='smoker', showfliers=False)
+plt.title('Charges by BMI Group (Quartiles) and Smoker Status')
+plt.xlabel('BMI Group')
+plt.ylabel('Charges')
+
+# Overlay group means as diamond markers
+sns.pointplot(
+    data=bmi_group_means,
+    x='bmi_group',
+    y='charges',
+    hue='smoker',
+    markers='D',
+    dodge=0.4,
+    join=False,
+    palette='dark:black',
+    ax=ax,
+    errorbar=None
+)
+
+# Add numeric labels for group means
+for i, row in bmi_group_means.iterrows():
+    x = list(df['bmi_group'].cat.categories).index(row['bmi_group'])
+    offset = -0.2 if row['smoker'] == 'no' else 0.2
+    ax.text(x + offset, row['charges'] + 500, f'{row["charges"]:.0f}',
+            ha='center', color='black', fontsize=9, fontweight='bold')
+
+# Add percentage difference labels above each BMI group (for smokers)
+for i, (group, vals) in enumerate(bmi_pivot_means.iterrows()):
+    pct = vals['pct_diff']
+    ax.text(i, vals['yes'] + 2500, f'+{pct:.0f}%', ha='center',
+            color='red', fontsize=10, fontweight='bold')
+
+plt.legend(title='Smoker')
+plt.tight_layout()
+plt.show()
+"""
