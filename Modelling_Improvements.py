@@ -291,6 +291,166 @@ plt.ylabel("Importance")
 plt.tight_layout()
 plt.show()
 
+# =============================================================================
+# FAIRNESS ANALYSIS FOR RANDOM FOREST - GENDER & REGION ONLY
+# =============================================================================
+
+# Get Random Forest predictions on test set (using your trained model)
+rf_test_predictions = best_rf.predict(X_test)
+
+# Convert predictions back to original scale if needed (since you used log-transform)
+if 'y_pred_log' in locals():
+    rf_test_predictions_original = np.exp(rf_test_predictions)
+    y_test_original = np.exp(y_test)
+else:
+    rf_test_predictions_original = rf_test_predictions
+    y_test_original = y_test
+
+# Add predictions and actual values to test set for fairness analysis
+test_set_rf = X_test.copy()
+test_set_rf['actual_charges'] = y_test_original
+test_set_rf['predicted_charges'] = rf_test_predictions_original
+test_set_rf['prediction_error'] = test_set_rf['predicted_charges'] - test_set_rf['actual_charges']
+test_set_rf['absolute_error'] = np.abs(test_set_rf['prediction_error'])
+test_set_rf['relative_error'] = (test_set_rf['prediction_error'] / test_set_rf['actual_charges']) * 100
+
+# 1. Gender Fairness Analysis
+print("\n1. GENDER FAIRNESS ANALYSIS")
+print("-" * 30)
+
+male_errors = test_set_rf[test_set_rf['sex_binary'] == 1]['prediction_error']
+female_errors = test_set_rf[test_set_rf['sex_binary'] == 0]['prediction_error']
+
+# T-test for gender differences
+from scipy import stats
+t_stat_gender, p_value_gender = stats.ttest_ind(male_errors, female_errors, equal_var=False)
+
+print(f"Male count: {len(male_errors)}")
+print(f"Female count: {len(female_errors)}")
+print(f"Mean error - Male: ${male_errors.mean():.2f}")
+print(f"Mean error - Female: ${female_errors.mean():.2f}")
+print(f"Std error - Male: ${male_errors.std():.2f}")
+print(f"Std error - Female: ${female_errors.std():.2f}")
+print(f"T-statistic: {t_stat_gender:.4f}")
+print(f"P-value: {p_value_gender:.4f}")
+
+# Disparate impact analysis
+male_mean_pred = test_set_rf[test_set_rf['sex_binary'] == 1]['predicted_charges'].mean()
+female_mean_pred = test_set_rf[test_set_rf['sex_binary'] == 0]['predicted_charges'].mean()
+male_mean_actual = test_set_rf[test_set_rf['sex_binary'] == 1]['actual_charges'].mean()
+female_mean_actual = test_set_rf[test_set_rf['sex_binary'] == 0]['actual_charges'].mean()
+
+disparate_impact_gender = female_mean_pred / male_mean_pred
+actual_ratio_gender = female_mean_actual / male_mean_actual
+
+print(f"\nDisparate Impact (Female/Male predictions): {disparate_impact_gender:.4f}")
+print(f"Actual Ratio (Female/Male actual): {actual_ratio_gender:.4f}")
+print(f"Bias Ratio (Predicted/Actual): {disparate_impact_gender/actual_ratio_gender:.4f}")
+
+# 2. Regional Fairness Analysis
+print("\n2. REGIONAL FAIRNESS ANALYSIS")
+print("-" * 30)
+
+# Get region columns
+region_cols = [col for col in test_set_rf.columns if col.startswith('region_')]
+region_errors = []
+
+print("Regional Error Analysis:")
+for region in region_cols:
+    region_data = test_set_rf[test_set_rf[region] == 1]
+    if len(region_data) > 0:
+        mean_error = region_data['prediction_error'].mean()
+        mean_absolute_err = region_data['absolute_error'].mean()
+        region_errors.append((region, mean_error, len(region_data)))
+        print(f"{region}: Mean error = ${mean_error:>8.2f}, MAE = ${mean_absolute_err:>8.2f} (n={len(region_data)})")
+
+# ANOVA test for regional differences
+region_groups = []
+region_names = []
+for region in region_cols:
+    region_errors_data = test_set_rf[test_set_rf[region] == 1]['prediction_error']
+    if len(region_errors_data) > 0:
+        region_groups.append(region_errors_data)
+        region_names.append(region.replace('region_', ''))
+
+if len(region_groups) >= 2:
+    f_stat_region, p_value_region = stats.f_oneway(*region_groups)
+    print(f"\nANOVA F-statistic: {f_stat_region:.4f}")
+    print(f"ANOVA P-value: {p_value_region:.4f}")
+else:
+    print("\nInsufficient regional groups for ANOVA")
+
+# 3. Visualization - Gender Differences
+plt.figure(figsize=(15, 5))
+
+plt.subplot(1, 3, 1)
+gender_means = [male_errors.mean(), female_errors.mean()]
+gender_labels = ['Male', 'Female']
+colors = ['blue', 'pink']
+bars = plt.bar(gender_labels, gender_means, color=colors, alpha=0.7)
+plt.title('Random Forest: Mean Prediction Error by Gender')
+plt.ylabel('Mean Error ($)')
+plt.grid(True, alpha=0.3)
+
+# Add value labels on bars
+for i, v in enumerate(gender_means):
+    plt.text(i, v, f'${v:.1f}', ha='center', va='bottom', fontweight='bold')
+
+plt.subplot(1, 3, 2)
+gender_abs_means = [np.abs(male_errors).mean(), np.abs(female_errors).mean()]
+bars = plt.bar(gender_labels, gender_abs_means, color=colors, alpha=0.7)
+plt.title('Random Forest: Mean Absolute Error by Gender')
+plt.ylabel('Mean Absolute Error ($)')
+plt.grid(True, alpha=0.3)
+
+for i, v in enumerate(gender_abs_means):
+    plt.text(i, v, f'${v:.1f}', ha='center', va='bottom', fontweight='bold')
+
+plt.subplot(1, 3, 3)
+gender_relative_means = [
+    test_set_rf[test_set_rf['sex_binary'] == 1]['relative_error'].mean(),
+    test_set_rf[test_set_rf['sex_binary'] == 0]['relative_error'].mean()
+]
+bars = plt.bar(gender_labels, gender_relative_means, color=colors, alpha=0.7)
+plt.title('Random Forest: Mean Relative Error by Gender')
+plt.ylabel('Mean Relative Error (%)')
+plt.grid(True, alpha=0.3)
+
+for i, v in enumerate(gender_relative_means):
+    plt.text(i, v, f'{v:.1f}%', ha='center', va='bottom', fontweight='bold')
+
+plt.tight_layout()
+plt.show()
+
+# 4. Visualization - Regional Differences
+plt.figure(figsize=(12, 6))
+
+plt.subplot(1, 2, 1)
+region_error_means = [test_set_rf[test_set_rf[col] == 1]['prediction_error'].mean() for col in region_cols]
+region_display_names = [col.replace('region_', '').title() for col in region_cols]
+
+bars = plt.bar(region_display_names, region_error_means, color='lightgreen', alpha=0.7)
+plt.title('Random Forest: Mean Prediction Error by Region')
+plt.ylabel('Mean Error ($)')
+plt.xticks(rotation=45)
+plt.grid(True, alpha=0.3)
+
+for i, v in enumerate(region_error_means):
+    plt.text(i, v, f'${v:.1f}', ha='center', va='bottom', fontsize=9)
+
+plt.subplot(1, 2, 2)
+region_abs_means = [test_set_rf[test_set_rf[col] == 1]['absolute_error'].mean() for col in region_cols]
+bars = plt.bar(region_display_names, region_abs_means, color='lightcoral', alpha=0.7)
+plt.title('Random Forest: Mean Absolute Error by Region')
+plt.ylabel('Mean Absolute Error ($)')
+plt.xticks(rotation=45)
+plt.grid(True, alpha=0.3)
+
+for i, v in enumerate(region_abs_means):
+    plt.text(i, v, f'${v:.1f}', ha='center', va='bottom', fontsize=9)
+
+plt.tight_layout()
+plt.show()
 
 ##################################
 #################XG BOOST#########
