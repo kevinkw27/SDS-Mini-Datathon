@@ -83,7 +83,7 @@ best_model = backward_elimination(X, y)
 print(best_model.summary())
 
 # Split data
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4, random_state=1)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=1)
 
 # Create and train the linear regression model
 model = LinearRegression()
@@ -100,12 +100,20 @@ print("\nFeature Coefficients:\n", coeff_df)
 
 coef_df_sorted = coeff_df.sort_values(by="Coefficient", ascending=False)
 
-# Create plot
-plt.figure(figsize=(8,6))
-plt.barh(coef_df_sorted["Feature"], coef_df_sorted["Coefficient"], color="blue")
+# Create plot with numeric labels
+plt.figure(figsize=(10,6))
+bars = plt.barh(coef_df_sorted["Feature"], coef_df_sorted["Coefficient"], color="skyblue")
 plt.xlabel("Coefficient Value")
 plt.ylabel("Feature")
 plt.title("Feature Importance (Linear Regression Coefficients)")
+
+# Add value labels on bars
+for bar in bars:
+    width = bar.get_width()
+    plt.text(width + 0.01 if width >= 0 else width - 0.01, bar.get_y() + bar.get_height()/2,
+             f'{width:.3f}', ha='left' if width >= 0 else 'right', va='center', fontsize=10)
+
+plt.tight_layout()
 plt.show()
 
 # Plotting Residual Errors
@@ -180,7 +188,7 @@ X_poly = poly.fit_transform(X)
 poly_feature_names = poly.get_feature_names_out(X.columns)
 
 # Split data
-X_train, X_test, y_train, y_test = train_test_split(X_poly, y, test_size=0.4, random_state=1)
+X_train, X_test, y_train, y_test = train_test_split(X_poly, y, test_size=0.2, random_state=1)
 
 # --- Train polynomial regression model ---
 model = LinearRegression()
@@ -261,7 +269,7 @@ y = df['charges']
 
 # Split into training and testing sets
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.4, random_state=1
+    X, y, test_size=0.2, random_state=1
 )
 
 # Scale features
@@ -333,7 +341,7 @@ X = pd.concat([df[['age', 'bmi', 'children', 'sex_binary', 'smoker_binary']], re
 y = df['charges']
 
 # Split dataset
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.4, random_state=1)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=1)
 
 # Log-transform target to reduce skew
 y_train_log = np.log(y_train)
@@ -365,7 +373,7 @@ y_pred_log = best_svr.predict(X_test_scaled)
 # Convert predictions back to original scale
 y_pred_orig = np.exp(y_pred_log)
 
-# --- Evaluation ---
+# Evaluation
 # RMSE and MAE
 rmse_test_orig = np.sqrt(mean_squared_error(y_test, y_pred_orig))
 mae_test_orig = mean_absolute_error(y_test, y_pred_orig)
@@ -551,7 +559,7 @@ rf_final = RandomForestRegressor(
 rf_final.fit(X_train, y_train)
 y_test_pred = rf_final.predict(X_test)
 
-# --- Evaluation Metrics ---
+# Evaluation Metrics
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
 rmse = np.sqrt(mean_squared_error(y_test, y_test_pred))
 mae = mean_absolute_error(y_test, y_test_pred)
@@ -568,10 +576,127 @@ print(f"Normalized MAE: {normalized_mae:.2f}%")
 print(f"R²: {r2:.4f}")
 
 # Feature Importance
-fi = pd.Series(rf_final.feature_importances_, index=X.columns).sort_values(ascending=False)
-plt.figure(figsize=(8,4))
-fi.plot(kind='bar', color='skyblue')
-plt.title("Random Forest — Feature Importances")
-plt.ylabel("Importance")
+fi = pd.Series(rf_final.feature_importances_, index=X.columns)
+fi.sort_values(ascending=False, inplace=True)
+
+plt.figure(figsize=(10,6))
+bars = plt.bar(fi.index, fi.values, color='skyblue')
+plt.title("Random Forest Regressor Feature Importance", fontsize=14)
+plt.ylabel("Importance", fontsize=12)
+plt.xticks(rotation=45)
+
+# Add value labels on top of bars
+for bar in bars:
+    height = bar.get_height()
+    plt.text(bar.get_x() + bar.get_width()/2, height + 0.005, f'{height:.3f}', ha='center', va='bottom', fontsize=10)
+
+plt.tight_layout()
+plt.show()
+
+############################
+########### XG BOOST #######
+############################
+
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+from xgboost import XGBRegressor
+from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+
+df['sex_binary'] = df['sex'].map({'male': 1, 'female': 0})
+df['smoker_binary'] = df['smoker'].map({'yes': 1, 'no': 0})
+region_dummies = pd.get_dummies(df['region'], prefix='region', drop_first=True)
+
+# Concatenate features
+X = pd.concat([
+    df[['age', 'bmi', 'children', 'sex_binary', 'smoker_binary']],
+    region_dummies
+], axis=1)
+y = df['charges']
+
+# Split into train/test
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=1
+)
+
+# GridSearchCV with 10-fold CV
+param_grid = {
+    'max_depth': list(range(2, 11)),
+    'learning_rate': [0.01, 0.05, 0.1, 0.2],
+    'n_estimators': [200],
+    'subsample': [0.8],
+    'colsample_bytree': [0.8]
+}
+
+xgb = XGBRegressor(random_state=1, objective='reg:squarederror', n_jobs=-1)
+
+grid_search = GridSearchCV(
+    estimator=xgb,
+    param_grid=param_grid,
+    scoring='neg_mean_squared_error',
+    cv=10,
+    n_jobs=-1
+)
+
+grid_search.fit(X_train, y_train)
+
+print("Best parameters (10-fold CV):", grid_search.best_params_)
+print("Best CV RMSE:", np.sqrt(-grid_search.best_score_))
+
+# Train final model on full training set
+xgb_final = grid_search.best_estimator_
+y_train_pred = xgb_final.predict(X_train)
+y_test_pred = xgb_final.predict(X_test)
+
+# Evaluation Metrics
+rmse = np.sqrt(mean_squared_error(y_test, y_test_pred))
+mae = mean_absolute_error(y_test, y_test_pred)
+r2 = r2_score(y_test, y_test_pred)
+mean_actual = np.mean(y_test)
+normalized_rmse = rmse / mean_actual * 100
+normalized_mae = mae / mean_actual * 100
+
+print("\nXGBoost Test Metrics:")
+print(f"RMSE: {rmse:.2f}")
+print(f"Normalized RMSE: {normalized_rmse:.2f}%")
+print(f"MAE: {mae:.2f}")
+print(f"Normalized MAE: {normalized_mae:.2f}%")
+print(f"R²: {r2:.4f}")
+
+# Feature Importance Plot
+feature_importance = pd.Series(xgb_final.feature_importances_, index=X_train.columns)
+feature_importance.sort_values(ascending=False, inplace=True)
+
+plt.figure(figsize=(10,6))
+bars = plt.bar(feature_importance.index, feature_importance.values, color='teal')
+plt.title("XGBoost Regressor Feature Importance", fontsize=14)
+plt.ylabel("Importance", fontsize=12)
+plt.xticks(rotation=45)
+
+# Add value labels on top of bars
+for bar in bars:
+    height = bar.get_height()
+    plt.text(bar.get_x() + bar.get_width()/2, height + 0.005, f'{height:.3f}', ha='center', va='bottom', fontsize=10)
+
+plt.tight_layout()
+plt.show()
+
+# Residual Plot (original scale)
+plt.style.use('fivethirtyeight')
+plt.figure(figsize=(8,5))
+x_min = min(y_train_pred.min(), y_test_pred.min())
+x_max = max(y_train_pred.max(), y_test_pred.max())
+
+plt.scatter(y_train_pred, y_train_pred - y_train, color="green", s=15, alpha=0.6, label='Train data')
+plt.scatter(y_test_pred, y_test_pred - y_test, color="blue", s=15, alpha=0.6, label='Test data')
+plt.hlines(y=0, xmin=x_min, xmax=x_max, colors='red', linewidth=2, linestyles='dashed')
+
+plt.xlabel("Predicted Charges (original scale)", fontsize=12)
+plt.ylabel("Residuals (Predicted - Actual)", fontsize=12)
+plt.title("Residuals (XGBoost Regression)", fontsize=14)
+plt.legend(loc='upper right', fontsize=10)
+plt.xlim(x_min, x_max)
+plt.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.show()
