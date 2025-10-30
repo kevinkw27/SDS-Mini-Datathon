@@ -151,6 +151,147 @@ print(f"Test R² (log scale): {r2_test:.4f}") #0.7605
 print(f"Normalized RMSE: {normalized_rmse:.2f}%") #64.27%
 print(f"Normalized MAE: {normalized_mae:.2f}%") #32.47%
 
+############################################
+# FAIRNESS ANALYSIS ON TEST SET
+############################################
+
+# Make predictions (using your existing model)
+y_pred = model.predict(X_test)
+
+# Convert back to original scale for fairness analysis
+y_test_orig = np.exp(y_test)
+y_pred_orig = np.exp(y_pred)
+
+# Get test set indices to match with original dataframe
+test_indices = X_test.index
+df_test = df.loc[test_indices].copy()
+df_test['predicted_charges'] = y_pred_orig
+df_test['actual_charges'] = y_test_orig
+
+# FAIRNESS ANALYSIS
+print("=" * 60)
+print("FAIRNESS ANALYSIS ON TEST SET")
+print("=" * 60)
+
+# 1. Gender Fairness Analysis
+print("\n1. GENDER FAIRNESS ANALYSIS")
+print("-" * 40)
+
+male_actual = df_test[df_test['sex'] == 'male']['actual_charges']
+female_actual = df_test[df_test['sex'] == 'female']['actual_charges']
+male_pred = df_test[df_test['sex'] == 'male']['predicted_charges']
+female_pred = df_test[df_test['sex'] == 'female']['predicted_charges']
+
+# Statistical tests
+from scipy import stats
+t_stat_actual, p_actual = stats.ttest_ind(male_actual, female_actual, equal_var=False)
+t_stat_pred, p_pred = stats.ttest_ind(male_pred, female_pred, equal_var=False)
+
+print(f"Actual charges - Male vs Female:")
+print(f"  Male mean: ${male_actual.mean():.2f}, Female mean: ${female_actual.mean():.2f}")
+print(f"  T-test: t={t_stat_actual:.4f}, p={p_actual:.4f}")
+
+print(f"Predicted charges - Male vs Female:")
+print(f"  Male mean: ${male_pred.mean():.2f}, Female mean: ${female_pred.mean():.2f}")
+print(f"  T-test: t={t_stat_pred:.4f}, p={p_pred:.4f}")
+
+# Disparate Impact
+disparate_impact_actual = female_actual.mean() / male_actual.mean()
+disparate_impact_pred = female_pred.mean() / male_pred.mean()
+print(f"Disparate Impact Ratio (Female/Male):")
+print(f"  Actual: {disparate_impact_actual:.4f}")
+print(f"  Predicted: {disparate_impact_pred:.4f}")
+
+# 2. Region Fairness Analysis
+print("\n2. REGION FAIRNESS ANALYSIS")
+print("-" * 40)
+
+region_actual_means = df_test.groupby('region')['actual_charges'].mean()
+region_pred_means = df_test.groupby('region')['predicted_charges'].mean()
+
+print("Average Actual Charges by Region:")
+for region, mean_charge in region_actual_means.items():
+    print(f"  {region}: ${mean_charge:.2f}")
+
+print("\nAverage Predicted Charges by Region:")
+for region, mean_charge in region_pred_means.items():
+    print(f"  {region}: ${mean_charge:.2f}")
+
+# ANOVA test for regional differences
+regions = df_test['region'].unique()
+region_groups_actual = [df_test[df_test['region'] == region]['actual_charges'] for region in regions]
+region_groups_pred = [df_test[df_test['region'] == region]['predicted_charges'] for region in regions]
+
+f_stat_actual, p_region_actual = stats.f_oneway(*region_groups_actual)
+f_stat_pred, p_region_pred = stats.f_oneway(*region_groups_pred)
+
+print(f"\nANOVA - Regional Differences:")
+print(f"  Actual charges: F={f_stat_actual:.4f}, p={p_region_actual:.4f}")
+print(f"  Predicted charges: F={f_stat_pred:.4f}, p={p_region_pred:.4f}")
+
+# 3. Model Bias Analysis
+print("\n3. MODEL BIAS ANALYSIS")
+print("-" * 40)
+
+# Calculate prediction errors by gender
+male_error = male_pred.mean() - male_actual.mean()
+female_error = female_pred.mean() - female_actual.mean()
+
+print(f"Prediction Bias by Gender:")
+print(f"  Male bias: ${male_error:.2f} ({male_error/male_actual.mean()*100:.2f}%)")
+print(f"  Female bias: ${female_error:.2f} ({female_error/female_actual.mean()*100:.2f}%)")
+
+# 4 Prediction Error Bar Plots
+print("\n4. PREDICTION ERROR ANALYSIS")
+print("-" * 40)
+
+# Calculate prediction errors
+df_test['prediction_error'] = df_test['actual_charges'] - df_test['predicted_charges']
+
+# Create error comparison plots
+fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+
+# Plot 1: Prediction errors by gender
+gender_errors = df_test.groupby('sex')['prediction_error'].mean()
+gender_errors.plot(kind='bar', ax=axes[0], color=['lightblue', 'lightcoral'])
+axes[0].set_title('Average Prediction Error by Gender\n(Actual - Predicted)')
+axes[0].set_ylabel('Prediction Error ($)')
+axes[0].set_xlabel('Gender')
+axes[0].axhline(y=0, color='red', linestyle='--', alpha=0.7)
+axes[0].tick_params(axis='x', rotation=0)
+
+# Add value labels on bars
+for i, v in enumerate(gender_errors):
+    axes[0].text(i, v + (10 if v >= 0 else -30), f'${v:.0f}', 
+                ha='center', va='bottom' if v >= 0 else 'top')
+
+# Plot 2: Prediction errors by region
+region_errors = df_test.groupby('region')['prediction_error'].mean()
+region_errors.plot(kind='bar', ax=axes[1], color=['lightgreen', 'lightyellow', 'lightblue', 'lightpink'])
+axes[1].set_title('Average Prediction Error by Region\n(Actual - Predicted)')
+axes[1].set_ylabel('Prediction Error ($)')
+axes[1].set_xlabel('Region')
+axes[1].axhline(y=0, color='red', linestyle='--', alpha=0.7)
+axes[1].tick_params(axis='x', rotation=45)
+
+# Add value labels on bars
+for i, v in enumerate(region_errors):
+    axes[1].text(i, v + (10 if v >= 0 else -30), f'${v:.0f}', 
+                ha='center', va='bottom' if v >= 0 else 'top')
+
+plt.tight_layout()
+plt.show()
+
+# Print error statistics
+print("Average Prediction Errors (Actual - Predicted):")
+print(f"\nBy Gender:")
+for gender, error in gender_errors.items():
+    print(f"  {gender}: ${error:.2f}")
+
+print(f"\nBy Region:")
+for region, error in region_errors.items():
+    print(f"  {region}: ${error:.2f}")
+
 
 ##########################################################
 #################POLYNOMIAL REGRESSION####################
@@ -240,6 +381,151 @@ plt.legend(loc='upper right')
 plt.title(f"Residual Errors (Polynomial Regression, degree={degree})")
 plt.show()
 
+############################################
+# FAIRNESS ANALYSIS ON TEST SET - POLYNOMIAL REGRESSION
+############################################
+
+# Convert predictions back to original scale
+y_test_exp = np.exp(y_test)
+y_pred_exp = np.exp(y_pred)
+
+# FIX: Get test set indices properly
+# Option 1: If y_test has index (most reliable)
+if hasattr(y_test, 'index'):
+    test_indices = y_test.index
+    df_test = df.loc[test_indices].copy()
+# Option 2: If no index available, create matching test set
+else:
+    # Create a test set that matches our split
+    _, test_indices = train_test_split(df.index, test_size=0.4, random_state=1)
+    df_test = df.loc[test_indices].copy()
+
+df_test['predicted_charges'] = y_pred_exp
+df_test['actual_charges'] = y_test_exp
+
+
+# FAIRNESS ANALYSIS
+print("=" * 60)
+print("FAIRNESS ANALYSIS - POLYNOMIAL REGRESSION (degree={})".format(degree))
+print("=" * 60)
+
+# 1. Gender Fairness Analysis
+print("\n1. GENDER FAIRNESS ANALYSIS")
+print("-" * 40)
+
+male_actual = df_test[df_test['sex'] == 'male']['actual_charges']
+female_actual = df_test[df_test['sex'] == 'female']['actual_charges']
+male_pred = df_test[df_test['sex'] == 'male']['predicted_charges']
+female_pred = df_test[df_test['sex'] == 'female']['predicted_charges']
+
+# Statistical tests
+from scipy import stats
+t_stat_actual, p_actual = stats.ttest_ind(male_actual, female_actual, equal_var=False)
+t_stat_pred, p_pred = stats.ttest_ind(male_pred, female_pred, equal_var=False)
+
+print(f"Actual charges - Male vs Female:")
+print(f"  Male mean: ${male_actual.mean():.2f}, Female mean: ${female_actual.mean():.2f}")
+print(f"  T-test: t={t_stat_actual:.4f}, p={p_actual:.4f}")
+
+print(f"Predicted charges - Male vs Female:")
+print(f"  Male mean: ${male_pred.mean():.2f}, Female mean: ${female_pred.mean():.2f}")
+print(f"  T-test: t={t_stat_pred:.4f}, p={p_pred:.4f}")
+
+# Disparate Impact
+disparate_impact_actual = female_actual.mean() / male_actual.mean()
+disparate_impact_pred = female_pred.mean() / male_pred.mean()
+print(f"Disparate Impact Ratio (Female/Male):")
+print(f"  Actual: {disparate_impact_actual:.4f}")
+print(f"  Predicted: {disparate_impact_pred:.4f}")
+
+# 2. Region Fairness Analysis
+print("\n2. REGION FAIRNESS ANALYSIS")
+print("-" * 40)
+
+region_actual_means = df_test.groupby('region')['actual_charges'].mean()
+region_pred_means = df_test.groupby('region')['predicted_charges'].mean()
+
+print("Average Actual Charges by Region:")
+for region, mean_charge in region_actual_means.items():
+    print(f"  {region}: ${mean_charge:.2f}")
+
+print("\nAverage Predicted Charges by Region:")
+for region, mean_charge in region_pred_means.items():
+    print(f"  {region}: ${mean_charge:.2f}")
+
+# ANOVA test for regional differences
+regions = df_test['region'].unique()
+region_groups_actual = [df_test[df_test['region'] == region]['actual_charges'] for region in regions]
+region_groups_pred = [df_test[df_test['region'] == region]['predicted_charges'] for region in regions]
+
+f_stat_actual, p_region_actual = stats.f_oneway(*region_groups_actual)
+f_stat_pred, p_region_pred = stats.f_oneway(*region_groups_pred)
+
+print(f"\nANOVA - Regional Differences:")
+print(f"  Actual charges: F={f_stat_actual:.4f}, p={p_region_actual:.4f}")
+print(f"  Predicted charges: F={f_stat_pred:.4f}, p={p_region_pred:.4f}")
+
+# 3. Prediction Error Analysis
+print("\n3. PREDICTION ERROR ANALYSIS")
+print("-" * 40)
+
+# Calculate prediction errors
+df_test['prediction_error'] = df_test['actual_charges'] - df_test['predicted_charges']
+
+# Create error comparison plots
+fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+
+# Plot 1: Prediction errors by gender
+gender_errors = df_test.groupby('sex')['prediction_error'].mean()
+gender_errors.plot(kind='bar', ax=axes[0], color=['lightblue', 'lightcoral'])
+axes[0].set_title('Average Prediction Error by Gender\n(Actual - Predicted)')
+axes[0].set_ylabel('Prediction Error ($)')
+axes[0].set_xlabel('Gender')
+axes[0].axhline(y=0, color='red', linestyle='--', alpha=0.7)
+axes[0].tick_params(axis='x', rotation=0)
+
+# Add value labels on bars
+for i, v in enumerate(gender_errors):
+    axes[0].text(i, v + (10 if v >= 0 else -30), f'${v:.0f}', 
+                ha='center', va='bottom' if v >= 0 else 'top')
+
+# Plot 2: Prediction errors by region
+region_errors = df_test.groupby('region')['prediction_error'].mean()
+region_errors.plot(kind='bar', ax=axes[1], color=['lightgreen', 'lightyellow', 'lightblue', 'lightpink'])
+axes[1].set_title('Average Prediction Error by Region\n(Actual - Predicted)')
+axes[1].set_ylabel('Prediction Error ($)')
+axes[1].set_xlabel('Region')
+axes[1].axhline(y=0, color='red', linestyle='--', alpha=0.7)
+axes[1].tick_params(axis='x', rotation=45)
+
+# Add value labels on bars
+for i, v in enumerate(region_errors):
+    axes[1].text(i, v + (10 if v >= 0 else -30), f'${v:.0f}', 
+                ha='center', va='bottom' if v >= 0 else 'top')
+
+plt.tight_layout()
+plt.show()
+
+# Print error statistics
+print("Average Prediction Errors (Actual - Predicted):")
+print(f"\nBy Gender:")
+for gender, error in gender_errors.items():
+    print(f"  {gender}: ${error:.2f}")
+
+print(f"\nBy Region:")
+for region, error in region_errors.items():
+    print(f"  {region}: ${error:.2f}")
+
+
+# Residual Error Plot (your existing code)
+plt.style.use('fivethirtyeight')
+plt.scatter(model.predict(X_train), model.predict(X_train) - y_train, color="green", s=10, label='Train data')
+plt.scatter(model.predict(X_test), model.predict(X_test) - y_test, color="blue", s=10, label='Test data')
+plt.hlines(y=0, xmin=min(y_pred), xmax=max(y_pred), linewidth=2)
+plt.legend(loc='upper right')
+plt.title(f"Residual Errors (Polynomial Regression, degree={degree})")
+plt.show()
+
 ##########################################################
 #################K NEAREST NEIGHBOURS#####################
 ##########################################################
@@ -317,6 +603,118 @@ print(f"Test MAE: {mae_test:.2f}")
 print(f"Test R²: {r2_test:.4f}")
 print(f"Normalized RMSE: {nrmse:.2f}%")
 print(f"Normalized MAE: {nmae:.2f}%")
+
+############################################
+# FAIRNESS ANALYSIS ON TEST SET - KNN
+############################################
+
+# Get test set indices to match with original dataframe
+test_indices = X_test.index
+df_test = df.loc[test_indices].copy()
+df_test['predicted_charges'] = y_pred
+df_test['actual_charges'] = y_test
+
+# FAIRNESS ANALYSIS
+print("=" * 60)
+print("FAIRNESS ANALYSIS - K-NEAREST NEIGHBORS (k={})".format(best_k))
+print("=" * 60)
+
+# 1. Gender Fairness Analysis
+print("\n1. GENDER FAIRNESS ANALYSIS")
+print("-" * 40)
+
+male_actual = df_test[df_test['sex'] == 'male']['actual_charges']
+female_actual = df_test[df_test['sex'] == 'female']['actual_charges']
+male_pred = df_test[df_test['sex'] == 'male']['predicted_charges']
+female_pred = df_test[df_test['sex'] == 'female']['predicted_charges']
+
+# Statistical tests
+from scipy import stats
+t_stat_actual, p_actual = stats.ttest_ind(male_actual, female_actual, equal_var=False)
+t_stat_pred, p_pred = stats.ttest_ind(male_pred, female_pred, equal_var=False)
+
+print(f"Actual charges - Male vs Female:")
+print(f"  Male mean: ${male_actual.mean():.2f}, Female mean: ${female_actual.mean():.2f}")
+print(f"  T-test: t={t_stat_actual:.4f}, p={p_actual:.4f}")
+
+print(f"Predicted charges - Male vs Female:")
+print(f"  Male mean: ${male_pred.mean():.2f}, Female mean: ${female_pred.mean():.2f}")
+print(f"  T-test: t={t_stat_pred:.4f}, p={p_pred:.4f}")
+
+# Disparate Impact
+disparate_impact_actual = female_actual.mean() / male_actual.mean()
+disparate_impact_pred = female_pred.mean() / male_pred.mean()
+print(f"Disparate Impact Ratio (Female/Male):")
+print(f"  Actual: {disparate_impact_actual:.4f}")
+print(f"  Predicted: {disparate_impact_pred:.4f}")
+
+# 2. Region Fairness Analysis
+print("\n2. REGION FAIRNESS ANALYSIS")
+print("-" * 40)
+
+region_actual_means = df_test.groupby('region')['actual_charges'].mean()
+region_pred_means = df_test.groupby('region')['predicted_charges'].mean()
+
+print("Average Actual Charges by Region:")
+for region, mean_charge in region_actual_means.items():
+    print(f"  {region}: ${mean_charge:.2f}")
+
+print("\nAverage Predicted Charges by Region:")
+for region, mean_charge in region_pred_means.items():
+    print(f"  {region}: ${mean_charge:.2f}")
+
+# ANOVA test for regional differences
+regions = df_test['region'].unique()
+region_groups_actual = [df_test[df_test['region'] == region]['actual_charges'] for region in regions]
+region_groups_pred = [df_test[df_test['region'] == region]['predicted_charges'] for region in regions]
+
+f_stat_actual, p_region_actual = stats.f_oneway(*region_groups_actual)
+f_stat_pred, p_region_pred = stats.f_oneway(*region_groups_pred)
+
+print(f"\nANOVA - Regional Differences:")
+print(f"  Actual charges: F={f_stat_actual:.4f}, p={p_region_actual:.4f}")
+print(f"  Predicted charges: F={f_stat_pred:.4f}, p={p_region_pred:.4f}")
+
+# 3. Prediction Error Analysis
+print("\n3. PREDICTION ERROR ANALYSIS")
+print("-" * 40)
+
+# Calculate prediction errors
+df_test['prediction_error'] = df_test['actual_charges'] - df_test['predicted_charges']
+
+# Create error comparison plots
+fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+
+# Plot 1: Prediction errors by gender
+gender_errors = df_test.groupby('sex')['prediction_error'].mean()
+gender_errors.plot(kind='bar', ax=axes[0], color=['lightblue', 'lightcoral'])
+axes[0].set_title('Average Prediction Error by Gender\n(Actual - Predicted)')
+axes[0].set_ylabel('Prediction Error ($)')
+axes[0].set_xlabel('Gender')
+axes[0].axhline(y=0, color='red', linestyle='--', alpha=0.7)
+axes[0].tick_params(axis='x', rotation=0)
+
+# Add value labels on bars
+for i, v in enumerate(gender_errors):
+    axes[0].text(i, v + (10 if v >= 0 else -30), f'${v:.0f}', 
+                ha='center', va='bottom' if v >= 0 else 'top')
+
+# Plot 2: Prediction errors by region
+region_errors = df_test.groupby('region')['prediction_error'].mean()
+region_errors.plot(kind='bar', ax=axes[1], color=['lightgreen', 'lightyellow', 'lightblue', 'lightpink'])
+axes[1].set_title('Average Prediction Error by Region\n(Actual - Predicted)')
+axes[1].set_ylabel('Prediction Error ($)')
+axes[1].set_xlabel('Region')
+axes[1].axhline(y=0, color='red', linestyle='--', alpha=0.7)
+axes[1].tick_params(axis='x', rotation=45)
+
+# Add value labels on bars
+for i, v in enumerate(region_errors):
+    axes[1].text(i, v + (10 if v >= 0 else -30), f'${v:.0f}', 
+                ha='center', va='bottom' if v >= 0 else 'top')
+
+plt.tight_layout()
+plt.show()
 
 ##########################################################
 #################SUPPORT VECTOR MACHINE###################
@@ -401,6 +799,127 @@ plt.title("Residuals (SVR with RBF Kernel)")
 plt.legend(loc='upper right')
 plt.show()
 
+############################################
+# FAIRNESS ANALYSIS ON TEST SET - SVM ######
+############################################
+
+# Get test set indices to match with original dataframe
+test_indices = X_test.index
+df_test = df.loc[test_indices].copy()
+df_test['predicted_charges'] = y_pred_orig
+df_test['actual_charges'] = y_test
+
+# FAIRNESS ANALYSIS
+print("=" * 60)
+print("FAIRNESS ANALYSIS - SUPPORT VECTOR REGRESSION")
+print("=" * 60)
+
+# 1. Gender Fairness Analysis
+print("\n1. GENDER FAIRNESS ANALYSIS")
+print("-" * 40)
+
+male_actual = df_test[df_test['sex'] == 'male']['actual_charges']
+female_actual = df_test[df_test['sex'] == 'female']['actual_charges']
+male_pred = df_test[df_test['sex'] == 'male']['predicted_charges']
+female_pred = df_test[df_test['sex'] == 'female']['predicted_charges']
+
+# Statistical tests
+from scipy import stats
+t_stat_actual, p_actual = stats.ttest_ind(male_actual, female_actual, equal_var=False)
+t_stat_pred, p_pred = stats.ttest_ind(male_pred, female_pred, equal_var=False)
+
+print(f"Actual charges - Male vs Female:")
+print(f"  Male mean: ${male_actual.mean():.2f}, Female mean: ${female_actual.mean():.2f}")
+print(f"  T-test: t={t_stat_actual:.4f}, p={p_actual:.4f}")
+
+print(f"Predicted charges - Male vs Female:")
+print(f"  Male mean: ${male_pred.mean():.2f}, Female mean: ${female_pred.mean():.2f}")
+print(f"  T-test: t={t_stat_pred:.4f}, p={p_pred:.4f}")
+
+# Disparate Impact
+disparate_impact_actual = female_actual.mean() / male_actual.mean()
+disparate_impact_pred = female_pred.mean() / male_pred.mean()
+print(f"Disparate Impact Ratio (Female/Male):")
+print(f"  Actual: {disparate_impact_actual:.4f}")
+print(f"  Predicted: {disparate_impact_pred:.4f}")
+
+# 2. Region Fairness Analysis
+print("\n2. REGION FAIRNESS ANALYSIS")
+print("-" * 40)
+
+region_actual_means = df_test.groupby('region')['actual_charges'].mean()
+region_pred_means = df_test.groupby('region')['predicted_charges'].mean()
+
+print("Average Actual Charges by Region:")
+for region, mean_charge in region_actual_means.items():
+    print(f"  {region}: ${mean_charge:.2f}")
+
+print("\nAverage Predicted Charges by Region:")
+for region, mean_charge in region_pred_means.items():
+    print(f"  {region}: ${mean_charge:.2f}")
+
+# ANOVA test for regional differences
+regions = df_test['region'].unique()
+region_groups_actual = [df_test[df_test['region'] == region]['actual_charges'] for region in regions]
+region_groups_pred = [df_test[df_test['region'] == region]['predicted_charges'] for region in regions]
+
+f_stat_actual, p_region_actual = stats.f_oneway(*region_groups_actual)
+f_stat_pred, p_region_pred = stats.f_oneway(*region_groups_pred)
+
+print(f"\nANOVA - Regional Differences:")
+print(f"  Actual charges: F={f_stat_actual:.4f}, p={p_region_actual:.4f}")
+print(f"  Predicted charges: F={f_stat_pred:.4f}, p={p_region_pred:.4f}")
+
+# 3. Prediction Error Analysis
+print("\n3. PREDICTION ERROR ANALYSIS")
+print("-" * 40)
+
+# Calculate prediction errors
+df_test['prediction_error'] = df_test['actual_charges'] - df_test['predicted_charges']
+
+# Create error comparison plots
+fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+
+# Plot 1: Prediction errors by gender
+gender_errors = df_test.groupby('sex')['prediction_error'].mean()
+gender_errors.plot(kind='bar', ax=axes[0], color=['lightblue', 'lightcoral'])
+axes[0].set_title('Average Prediction Error by Gender\n(Actual - Predicted)')
+axes[0].set_ylabel('Prediction Error ($)')
+axes[0].set_xlabel('Gender')
+axes[0].axhline(y=0, color='red', linestyle='--', alpha=0.7)
+axes[0].tick_params(axis='x', rotation=0)
+
+# Add value labels on bars
+for i, v in enumerate(gender_errors):
+    axes[0].text(i, v + (10 if v >= 0 else -30), f'${v:.0f}', 
+                ha='center', va='bottom' if v >= 0 else 'top')
+
+# Plot 2: Prediction errors by region
+region_errors = df_test.groupby('region')['prediction_error'].mean()
+region_errors.plot(kind='bar', ax=axes[1], color=['lightgreen', 'lightyellow', 'lightblue', 'lightpink'])
+axes[1].set_title('Average Prediction Error by Region\n(Actual - Predicted)')
+axes[1].set_ylabel('Prediction Error ($)')
+axes[1].set_xlabel('Region')
+axes[1].axhline(y=0, color='red', linestyle='--', alpha=0.7)
+axes[1].tick_params(axis='x', rotation=45)
+
+# Add value labels on bars
+for i, v in enumerate(region_errors):
+    axes[1].text(i, v + (10 if v >= 0 else -30), f'${v:.0f}', 
+                ha='center', va='bottom' if v >= 0 else 'top')
+
+plt.tight_layout()
+plt.show()
+
+# Print error statistics
+print("Average Prediction Errors (Actual - Predicted):")
+print(f"\nBy Gender:")
+for gender, error in gender_errors.items():
+    print(f"  {gender}: ${error:.2f}")
+
+print(f"\nBy Region:")
+for region, error in region_errors.items():
+    print(f"  {region}: ${error:.2f}")
 
 ##############################
 ######DECISION TREE###########
@@ -488,6 +1007,118 @@ plt.title("Residuals (Decision Tree Regression)", fontsize=14)
 plt.legend(loc='upper right', fontsize=10)
 plt.xlim(x_min, x_max)
 plt.grid(True, alpha=0.3)
+plt.tight_layout()
+plt.show()
+
+############################################
+# FAIRNESS ANALYSIS ON TEST SET - SVM ######
+############################################
+
+# Get test set indices to match with original dataframe
+test_indices = X_test.index
+df_test = df.loc[test_indices].copy()
+df_test['predicted_charges'] = y_pred_orig
+df_test['actual_charges'] = y_test
+
+# FAIRNESS ANALYSIS
+print("=" * 60)
+print("FAIRNESS ANALYSIS - SUPPORT VECTOR REGRESSION")
+print("=" * 60)
+
+# 1. Gender Fairness Analysis
+print("\n1. GENDER FAIRNESS ANALYSIS")
+print("-" * 40)
+
+male_actual = df_test[df_test['sex'] == 'male']['actual_charges']
+female_actual = df_test[df_test['sex'] == 'female']['actual_charges']
+male_pred = df_test[df_test['sex'] == 'male']['predicted_charges']
+female_pred = df_test[df_test['sex'] == 'female']['predicted_charges']
+
+# Statistical tests
+from scipy import stats
+t_stat_actual, p_actual = stats.ttest_ind(male_actual, female_actual, equal_var=False)
+t_stat_pred, p_pred = stats.ttest_ind(male_pred, female_pred, equal_var=False)
+
+print(f"Actual charges - Male vs Female:")
+print(f"  Male mean: ${male_actual.mean():.2f}, Female mean: ${female_actual.mean():.2f}")
+print(f"  T-test: t={t_stat_actual:.4f}, p={p_actual:.4f}")
+
+print(f"Predicted charges - Male vs Female:")
+print(f"  Male mean: ${male_pred.mean():.2f}, Female mean: ${female_pred.mean():.2f}")
+print(f"  T-test: t={t_stat_pred:.4f}, p={p_pred:.4f}")
+
+# Disparate Impact
+disparate_impact_actual = female_actual.mean() / male_actual.mean()
+disparate_impact_pred = female_pred.mean() / male_pred.mean()
+print(f"Disparate Impact Ratio (Female/Male):")
+print(f"  Actual: {disparate_impact_actual:.4f}")
+print(f"  Predicted: {disparate_impact_pred:.4f}")
+
+# 2. Region Fairness Analysis
+print("\n2. REGION FAIRNESS ANALYSIS")
+print("-" * 40)
+
+region_actual_means = df_test.groupby('region')['actual_charges'].mean()
+region_pred_means = df_test.groupby('region')['predicted_charges'].mean()
+
+print("Average Actual Charges by Region:")
+for region, mean_charge in region_actual_means.items():
+    print(f"  {region}: ${mean_charge:.2f}")
+
+print("\nAverage Predicted Charges by Region:")
+for region, mean_charge in region_pred_means.items():
+    print(f"  {region}: ${mean_charge:.2f}")
+
+# ANOVA test for regional differences
+regions = df_test['region'].unique()
+region_groups_actual = [df_test[df_test['region'] == region]['actual_charges'] for region in regions]
+region_groups_pred = [df_test[df_test['region'] == region]['predicted_charges'] for region in regions]
+
+f_stat_actual, p_region_actual = stats.f_oneway(*region_groups_actual)
+f_stat_pred, p_region_pred = stats.f_oneway(*region_groups_pred)
+
+print(f"\nANOVA - Regional Differences:")
+print(f"  Actual charges: F={f_stat_actual:.4f}, p={p_region_actual:.4f}")
+print(f"  Predicted charges: F={f_stat_pred:.4f}, p={p_region_pred:.4f}")
+
+# 3. Prediction Error Analysis
+print("\n3. PREDICTION ERROR ANALYSIS")
+print("-" * 40)
+
+# Calculate prediction errors
+df_test['prediction_error'] = df_test['actual_charges'] - df_test['predicted_charges']
+
+# Create error comparison plots
+fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+
+# Plot 1: Prediction errors by gender
+gender_errors = df_test.groupby('sex')['prediction_error'].mean()
+gender_errors.plot(kind='bar', ax=axes[0], color=['lightblue', 'lightcoral'])
+axes[0].set_title('Average Prediction Error by Gender\n(Actual - Predicted)')
+axes[0].set_ylabel('Prediction Error ($)')
+axes[0].set_xlabel('Gender')
+axes[0].axhline(y=0, color='red', linestyle='--', alpha=0.7)
+axes[0].tick_params(axis='x', rotation=0)
+
+# Add value labels on bars
+for i, v in enumerate(gender_errors):
+    axes[0].text(i, v + (10 if v >= 0 else -30), f'${v:.0f}', 
+                ha='center', va='bottom' if v >= 0 else 'top')
+
+# Plot 2: Prediction errors by region
+region_errors = df_test.groupby('region')['prediction_error'].mean()
+region_errors.plot(kind='bar', ax=axes[1], color=['lightgreen', 'lightyellow', 'lightblue', 'lightpink'])
+axes[1].set_title('Average Prediction Error by Region\n(Actual - Predicted)')
+axes[1].set_ylabel('Prediction Error ($)')
+axes[1].set_xlabel('Region')
+axes[1].axhline(y=0, color='red', linestyle='--', alpha=0.7)
+axes[1].tick_params(axis='x', rotation=45)
+
+# Add value labels on bars
+for i, v in enumerate(region_errors):
+    axes[1].text(i, v + (10 if v >= 0 else -30), f'${v:.0f}', 
+                ha='center', va='bottom' if v >= 0 else 'top')
+
 plt.tight_layout()
 plt.show()
 
